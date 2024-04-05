@@ -18,6 +18,8 @@ class Environment:
         self.total_items = total_items
         self.item_types = item_types if item_types is not None else ['I', 'A']  # Dois tipos de itens
         self.grid = [[' ' for _ in range(size)] for _ in range(size)]
+        self.item_positions_A = []
+        self.item_positions_I = []
         self.place_items()
         
 
@@ -28,11 +30,19 @@ class Environment:
             item_type = random.choice(self.item_types)  # Escolhe aleatoriamente entre os tipos de itens disponíveis
             self.grid[x][y] = item_type
 
+            # Adiciona a posição (x, y) à lista correspondente ao tipo de item
+            if item_type == 'A':
+                self.item_positions_A.append((x, y))
+            elif item_type == 'I':
+                self.item_positions_I.append((x, y))
+            
+
     def is_item_at(self, x, y):
         if 0 <= x < self.size and 0 <= y < self.size and self.grid[x][y] in self.item_types:
             return self.grid[x][y]
         else:
             return False     
+
     def get_item_points(self, x, y):
         # Define a lógica para obter os pontos de um item em uma célula específica
         # Aqui, estamos retornando pontos fixos para diferentes tipos de itens
@@ -55,6 +65,8 @@ class Agent:
         self.collected_items = 0
         self.color = color
         self.name = name
+        self.direction = 'right'
+        self.start_time = time.time()
 
     def pick(self):
         item_type = self.env.is_item_at(self.x, self.y)
@@ -82,16 +94,6 @@ class Agent:
             self.y -= 1
         elif direction == 'right' and self.y < self.env.size - 1:
             self.y += 1
-
-    def move_towards_item_or_home(self):
-        if self.holding_item:
-            self.move_to(self.start_x, self.start_y)
-        else:
-            closest_item_direction = self.find_closest_item_direction()
-            if closest_item_direction:
-                self.move(closest_item_direction)
-            else:
-                self.move(random.choice(['up', 'down', 'left', 'right']))
 
     def find_closest_item_direction(self):
         min_distance = float('inf')
@@ -133,130 +135,83 @@ class Agent:
                 self.move('right')
             else:
                 self.move('left')
+    
+    def movimentation(self):
+        if self.direction == 'right':
+            if self.y < self.env.size -1:
+                self.move('right')
+            else:
+                self.move('down')
+                self.direction = 'left'
+        elif self.direction == 'left':
+            if self.y > 0:
+                self.move('left')
+            else:
+                self.move('down')
+                self.direction = 'right'
+
+    def no_op(self):
+            move_to(self.start_x, self.start_y)
 
 
 class ReactiveAgent(Agent):
     def __init__(self, env, start_x=0, start_y=0, color=WHITE, name="Agent"):
         super().__init__(env, start_x, start_y, color, name)
-
-    def act(self):
-        if (self.x, self.y) == (self.start_x, self.start_y) and self.holding_item:
-            self.drop()
-        elif self.env.is_item_at(self.x, self.y) and not self.holding_item:
-            self.pick()
-        else:
-            self.move_towards_item_or_home()
-
-    def move_towards_item_or_home(self):
-        if self.holding_item:
-            self.move_to(self.start_x, self.start_y)
-        else:
-            closest_item_direction = self.find_closest_item_direction()
-            if closest_item_direction:
-                self.move(closest_item_direction)
-            else:
-                self.move(random.choice(['up', 'down', 'left', 'right']))
-
-    def find_closest_item_direction(self):
-        min_distance = float('inf')
-        closest_direction = None
-
-        for direction in ['up', 'down', 'left', 'right']:
-            next_x, next_y = self.next_position(direction)
-            if self.env.is_item_at(next_x, next_y):
-                distance = abs(self.start_x - next_x) + abs(self.start_y - next_y)
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_direction = direction
-        return closest_direction
-    
-
-class StateAgent(Agent):
-    def __init__(self, env, start_x=0, start_y=0, color=BLUE, name="Agent"):
-        super().__init__(env, start_x, start_y, color, name)
-        self.explored = set()  # Conjunto de posições já exploradas
-        self.items_locations = []  # Lista de localizações conhecidas de itens
-
-    def update_state(self):
-        # Atualiza o estado interno com a localização atual
-        self.explored.add((self.x, self.y))
-        if self.env.is_item_at(self.x, self.y):
-            self.items_locations.append((self.x, self.y))
+        self.direction = 'right'
 
     def act(self):
         if self.holding_item:
-            # Se estiver segurando um item, voltar ao ponto de partida
             self.move_to(self.start_x, self.start_y)
             if (self.x, self.y) == (self.start_x, self.start_y):
                 self.drop()
-                self.explore()
-                self.update_state()
+                self.movimentation()
                 closest_item_direction = self.find_closest_item_direction()
                 if closest_item_direction:
                     self.move(closest_item_direction)
         else:
             if self.env.is_item_at(self.x, self.y):
                 self.pick()
-            else:
-                self.explore()
-                self.update_state()
+            else: 
+                self.movimentation()
                 closest_item_direction = self.find_closest_item_direction()
                 if closest_item_direction:
                     self.move(closest_item_direction)
 
-    def move_to(self, target_x, target_y):
-        # Semelhante ao ReactiveAgent, mas poderia ser mais sofisticado
-        if self.x < target_x:
-            self.move('down')
-        elif self.x > target_x:
-            self.move('up')
-        elif self.y < target_y:
-            self.move('right')
-        elif self.y > target_y:
-            self.move('left')
+class StateAgent(Agent):
+    def __init__(self, env, start_x=0, start_y=0, color=BLUE, name="Agent"):
+        super().__init__(env, start_x, start_y, color, name)
+        self.last_item_x = 0  # Posição x do último item coletado
+        self.last_item_y = 0  # Posição y do último item coletado
+        self.direction = 'right'
+        self.is_position = True
+        self.dir = 'right'
 
-    def explore(self):
-        directions = ['up', 'down', 'left', 'right']
-        random.shuffle(directions)  # Explora direções aleatoriamente
-        unexplored_directions = [direction for direction in directions if self.can_move(direction)]
-
-        if unexplored_directions:
-            # Se houver direções não exploradas disponíveis, move-se para a primeira delas.
-            self.move(unexplored_directions[0])
+    def act(self):
+        if self.holding_item:
+            self.move_to(self.start_x, self.start_y)
+            if (self.x, self.y) == (self.start_x, self.start_y):
+                self.drop()
+                self.is_position = False
+                self.return_to_last_item()  # Retorna à posição do último item coletado
         else:
-            # Se todas as direções foram exploradas, tenta encontrar uma direção para se mover que não leve fora dos limites
-            self.move_to_previously_explored()
+            if self.env.is_item_at(self.x, self.y):
+                self.last_item_x = self.x  # Armazena a posição do item coletado
+                self.last_item_y = self.y
+                self.dir = self.direction
+                self.pick()
+            else:
+                if self.is_position == True:
+                    self.movimentation()  # Movimenta-se normalmente
+                    print("ta andando normal")
+                else: 
+                    self.return_to_last_item()
 
-    def can_move(self, direction):
-        """Verifica se pode mover na direção especificada sem sair dos limites e sem ir para uma célula já explorada."""
-        next_x, next_y = self.next_position(direction)
-        return (0 <= next_x < self.env.size and 
-                0 <= next_y < self.env.size and 
-                (next_x, next_y) not in self.explored)
-
-    def move_to_previously_explored(self):
-        """Move-se para uma direção aleatória que não o leve fora dos limites do ambiente, mesmo que já explorada."""
-        directions = ['up', 'down', 'left', 'right']
-        valid_directions = [direction for direction in directions if self.is_within_bounds(direction)]
-
-        if valid_directions:
-            self.move(random.choice(valid_directions))
-
-    def is_within_bounds(self, direction):
-        """Verifica se a próxima posição está dentro dos limites do ambiente."""
-        next_x, next_y = self.next_position(direction)
-        return 0 <= next_x < self.env.size and 0 <= next_y < self.env.size      
-        
-    def next_position(self, direction):
-        # Calcula a próxima posição com base na direção
-        if direction == 'up':
-            return self.x - 1, self.y
-        elif direction == 'down':
-            return self.x + 1, self.y
-        elif direction == 'left':
-            return self.x, self.y - 1
-        elif direction == 'right':
-            return self.x, self.y + 1
+    def return_to_last_item(self):
+        self.move_to(self.last_item_x, self.last_item_y)
+        print("ta voltando pro item")
+        if (self.x, self.y) == (self.last_item_x, self.last_item_y):
+            self.direction = self.dir
+            self.is_position = True
 
 
 class GoalAgent(Agent):
@@ -265,141 +220,134 @@ class GoalAgent(Agent):
         self.goal = "collect_items"  # Inicialmente, o agente quer coletar itens.
         self.collected_items = 0
         self.explored = set()  # Conjunto de posições já exploradas
+        self.item_positions_A = []  # Lista de posições dos itens do tipo A
+        self.item_positions_I = []  # Lista de posições dos itens do tipo I
+        self.all_items = []
+        self.index = 0
+        self.collected_items = 0
+        
 
     def act(self):
+        self.organize_items(self.item_positions_A, self.item_positions_I)
+
         # Atualiza o objetivo com base no estado atual
-        if self.goal == "collect_items" and self.collected_items == self.env.total_items:
+        if self.goal == "collect_items" and self.holding_item:
             self.goal = "return_home"
-        
+    
         # Ação baseada no objetivo
         if self.goal == "collect_items":
             self.collect_items()
         elif self.goal == "return_home":
             self.return_home()
 
+    def set_item_positions(self, item_positions_A, item_positions_I):
+        self.item_positions_A = item_positions_A
+        self.item_positions_I = item_positions_I
+
+    def organize_items(self, item_positions_A, item_positions_I):
+        # Combine as duas listas de posições de itens
+        self.all_items = item_positions_A + item_positions_I
+        # Ordene os itens pela proximidade do ponto (1, 1)
+        self.all_items.sort(key=lambda pos: abs(pos[0] - 1) + abs(pos[1] - 1))
+
+        # Crie duas variáveis para armazenar as coordenadas x e y do índice 0 da lista all_items
+        if self.index < len(self.all_items):
+            self.first_item_x, self.first_item_y = self.all_items[self.index]
+        else:
+            self.move_to(self.start_x, self.start_y)
+         
+
     def collect_items(self):
         if self.env.is_item_at(self.x, self.y):
             self.pick()
         else:
-            self.explore_or_move_to_item()
+            self.move_to(self.first_item_x, self.first_item_y)
 
     def return_home(self):
         if (self.x, self.y) == (self.start_x, self.start_y):
-            self.drop_all_items()
+            self.drop()
+            self.collected_items = self.collected_items + 1
+            if self.index > 10:
+                no_op()
+            else:
+                self.index = self.index + 1
+                self.goal = "collect_items"
+            
         else:
             self.move_to(self.start_x, self.start_y)
 
-    def explore_or_move_to_item(self):
-        # Verifica se há itens visíveis e move-se diretamente para o item A se possível
-        for direction in ['up', 'down', 'left', 'right']:
-            next_x, next_y = self.next_position(direction)
-            if self.env.is_item_at(next_x, next_y) and self.env.grid[next_x][next_y] == 'A':
-                self.move(direction)
-                return
-        # Verifica se há outros itens visíveis e move-se diretamente para eles se possível
-        for direction in ['up', 'down', 'left', 'right']:
-            next_x, next_y = self.next_position(direction)
-            if self.env.is_item_at(next_x, next_y) and self.env.grid[next_x][next_y] != 'I':
-                self.move(direction)
-                return
-        # Se não há itens visíveis de tipo A ou diferentes de tipo I, explora uma célula aleatória não explorada
-        directions = ['up', 'down', 'left', 'right']
-        random.shuffle(directions)
-        for direction in directions:
-            next_x, next_y = self.next_position(direction)
-            if (next_x, next_y) not in self.explored:
-                self.move(direction)
-                return
-
-        # Se todas as células vizinhas foram exploradas, move-se aleatoriamente
-        self.move(random.choice(['up', 'down', 'left', 'right']))
-
-
-    def move_to(self, target_x, target_y):
-        # Calcula a direção mais curta para alcançar o ponto de destino
-        dx = target_x - self.x
-        dy = target_y - self.y
-
-        if dx != 0:
-            if dx > 0:
-                self.move('down')
-            else:
-                self.move('up')
-        elif dy != 0:
-            if dy > 0:
-                self.move('right')
-            else:
-                self.move('left')
-
-    def drop_all_items(self):
-        # Supondo que o agente possa segurar mais de um item, ele os soltaria todos no ponto de partida
-        self.holding_item = False  # Resetar o status de segurar itens
+    def no_op(self):
+            move_to(0, 0)
 
 class UtilityAgent(Agent):
     def __init__(self, env, start_x=1, start_y=1, color=WHITE, name="Agent"):
         super().__init__(env, start_x, start_y,color, name)
         self.total_points = 0
-        self.utility_threshold = 10  # Limiar de utilidade para decidir se deve coletar ou não um item
+        self.goal = "collect_items"
         self.explored = set()  # Conjunto de posições já exploradas
+        self.item_positions_A = []  # Lista de posições dos itens do tipo A
+        self.item_positions_I = []  # Lista de posições dos itens do tipo I
+        self.index = 0
+        self.first_item_x = None
+        self.first_item_y = None
+        self.collected_items = 0
+        self.start_time = time.time()
+
 
     def act(self):
-        if self.holding_item:
+        self.organize_items(self.item_positions_A, self.item_positions_I)
+
+        # Atualiza o objetivo com base no estado atual
+        if self.goal == "collect_items" and self.collected_items == 1:
+            self.goal = "return_home"
+        elif self.goal == "return_home" and self.collected_items == 0:
+            self.goal = "collect_items"
+
+        # Ação baseada no objetivo
+        if self.goal == "collect_items":
+            self.collect_items()
+        elif self.goal == "return_home":
             self.return_home()
+
+    def set_item_positions(self, item_positions_A, item_positions_I):
+        self.item_positions_A = item_positions_A
+        self.item_positions_I = item_positions_I
+
+    def run_list(self, item_positions_A, item_positions_):
+        if self.index < len(self.item_positions_A):
+            # Crie duas variáveis para armazenar as coordenadas x e y do índice atual da lista A
+            self.first_item_x, self.first_item_y = self.item_positions_A[self.index]
+        elif self.index < len(self.item_positions_A) + len(self.item_positions_I):
+            # Acesse a lista I usando o índice ajustado
+            i_index = self.index - len(self.item_positions_A)
+            self.first_item_x, self.first_item_y = self.item_positions_I[i_index]
         else:
-            self.decide_action()
+            self.move_to(0, 0)
 
-    def decide_action(self):
-        # Calcula a utilidade esperada de coletar um item em cada célula vizinha
-        expected_utilities = {}
-        for direction in ['up', 'down', 'left', 'right']:
-            next_x, next_y = self.next_position(direction)
-            if self.env.is_item_at(next_x, next_y):
-                expected_utilities[direction] = self.calculate_utility(next_x, next_y)
-
-        if expected_utilities:
-            # Se houver células com utilidade positiva, escolhe a que maximiza a utilidade
-            best_direction = max(expected_utilities, key=expected_utilities.get)
-            if expected_utilities[best_direction] > self.utility_threshold:
-                self.move(best_direction)
+    def organize_items(self, item_positions_A, item_positions_I):
+        # Ordene os itens pela proximidade do ponto (1, 1)
+        self.item_positions_A.sort(key=lambda pos: abs(pos[0] - 1) + abs(pos[1] - 1))
+        self.item_positions_I.sort(key=lambda pos: abs(pos[0] - 1) + abs(pos[1] - 1))
+        
+    def collect_items(self):
+        self.run_list(self.item_positions_A, self.item_positions_I)  # Atualiza os itens a serem coletados
+        if self.env.is_item_at(self.x, self.y):
+            self.pick()
+            self.collected_items = self.collected_items
+            if (self.x, self.y) == (self.first_item_x, self.first_item_y):
+                self.index = self.index + 1
             else:
-                self.explore()
+                self.goal = "collect_items"
         else:
-            # Se não houver itens visíveis, explora uma célula aleatória não explorada
-            self.explore()
-
-
-    def explore(self):
-        directions = ['up', 'down', 'left', 'right']
-        random.shuffle(directions)  # Explora direções aleatoriamente
-        unexplored_directions = [direction for direction in directions if self.can_move(direction)]
-
-        if unexplored_directions:
-            # Se houver direções não exploradas disponíveis, move-se para a primeira delas.
-            self.move(unexplored_directions[0])
-        else:
-            # Se todas as direções foram exploradas, tenta encontrar uma direção para se mover que não leve fora dos limites
-            self.move_to_previously_explored()
-
-    def can_move(self, direction):
-        """Verifica se pode mover na direção especificada sem sair dos limites e sem ir para uma célula já explorada."""
-        next_x, next_y = self.next_position(direction)
-        return (0 <= next_x < self.env.size and 
-                0 <= next_y < self.env.size and 
-                (next_x, next_y) not in self.explored)
-
-    def calculate_utility(self, x, y):
-        # Calcula a utilidade esperada de coletar um item em uma célula específica
-        # Aqui, a utilidade é uma função simples dos pontos obtidos e do tempo gasto
-        points = self.env.get_item_points(x, y)
-        distance = abs(self.x - x) + abs(self.y - y)
-        utility = points - distance  # Utilidade simples: pontos - distância
-        return utility
+            self.move_to(self.first_item_x, self.first_item_y)
 
     def return_home(self):
         if (self.x, self.y) == (self.start_x, self.start_y):
             self.drop()
+            self.collected_items = self.collected_items - 1
         else:
             self.move_to(self.start_x, self.start_y)
+
 
 # Função para desenhar o ambiente e os agentes
 def draw_environment(screen, env, agents):
@@ -431,10 +379,13 @@ def draw_environment(screen, env, agents):
     font = pygame.font.Font(None, 24)
     y_offset = 20
     for agent in agents:
+        runtime = round(time.time() - agent.start_time, 2)
         text = font.render(f"{agent.name}: {agent.score}", True, BLACK)
         screen.blit(text, (screen.get_width() - 230, y_offset))
         pygame.draw.rect(screen, agent.color, (screen.get_width() - 270, y_offset + 5, 15, 15))  # Mostrar a cor ao lado do placar
         y_offset += 30
+        text = font.render(f"Time: {runtime} s", True, BLACK)
+        screen.blit(text, (screen.get_width() - 230, y_offset))
 
     pygame.display.flip()
 
@@ -444,12 +395,16 @@ def main():
 
     size = 20
     env = Environment(size=size, total_items=10)
+    item_positions_A = env.item_positions_A
+    item_positions_I = env.item_positions_I
     agents = [
         ReactiveAgent(env, color=RED, name="Reactive Agent "),
-        StateAgent(env, color=BLUE, name="State Agent "),
-        GoalAgent(env, color=BLACK, name="Goal Agent"),
-        UtilityAgent(env, color=PURPLE, name="Utility Agent"),
+        #StateAgent(env, color=BLUE, name="State Agent "),
+        #GoalAgent(env, color=BLACK, name="Goal Agent"),
+        #UtilityAgent(env, color=PURPLE, name="Utility Agent"),
     ]
+    #sempre passar o indice do GoalAgent e pro utility
+    #agents[0].set_item_positions(item_positions_A, item_positions_I)
     screen_width = size * 32 + 300  # Ajustado para a largura do placar
     screen_height = size * 32
     screen = pygame.display.set_mode([screen_width, screen_height])
@@ -466,7 +421,7 @@ def main():
         for agent in agents:
             agent.act()
         draw_environment(screen, env, agents)
-        clock.tick(5)  # Ajuste a velocidade de exibição
+        clock.tick(40)  # Ajuste a velocidade de exibição
 
     pygame.quit()
 
